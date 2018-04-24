@@ -110,17 +110,27 @@ function syncBooleanAttrProp(fromEl, toEl, name) {
         if (fromEl[name]) {
             fromEl.setAttribute(name, '');
         } else {
-            fromEl.removeAttribute(name, '');
+            fromEl.removeAttribute(name);
         }
     }
 }
 
 var specialElHandlers = {
-    /**
-     * Needed for IE. Apparently IE doesn't think that "selected" is an
-     * attribute when reading over the attributes using selectEl.attributes
-     */
     OPTION: function(fromEl, toEl) {
+        var parentNode = fromEl.parentNode;
+        if (parentNode && parentNode.nodeName.toUpperCase() === 'SELECT' && !hasAttributeNS(parentNode, null, 'multiple')) {
+            if (hasAttributeNS(fromEl, null, 'selected') && !toEl.selected) {
+                // Workaround for MS Edge bug where the 'selected' attribute can only be
+                // removed if set to a non-empty value:
+                // https://developer.microsoft.com/en-us/microsoft-edge/platform/issues/12087679/
+                fromEl.setAttribute('selected', 'selected');
+                fromEl.removeAttribute('selected');
+            }
+            // We have to reset select element's selectedIndex to -1, otherwise setting
+            // fromEl.selected using the syncBooleanAttrProp below has no effect.
+            // The correct selectedIndex will be set in the SELECT special handler below.
+            parentNode.selectedIndex = -1;
+        }
         syncBooleanAttrProp(fromEl, toEl, 'selected');
     },
     /**
@@ -165,7 +175,11 @@ var specialElHandlers = {
         if (!hasAttributeNS(toEl, null, 'multiple')) {
             var selectedIndex = -1;
             var i = 0;
-            var curChild = toEl.firstChild;
+            // We have to loop through children of fromEl, not toEl since nodes can be moved
+            // from toEl to fromEl directly when morphing.
+            // At the time this special handler is invoked, all children have already been morphed
+            // and appended to / removed from fromEl, so using fromEl here is safe and correct.
+            var curChild = fromEl.firstChild;
             while(curChild) {
                 var nodeName = curChild.nodeName;
                 if (nodeName && nodeName.toUpperCase() === 'OPTION') {
@@ -178,7 +192,7 @@ var specialElHandlers = {
                 curChild = curChild.nextSibling;
             }
 
-            fromEl.selectedIndex = i;
+            fromEl.selectedIndex = selectedIndex;
         }
     }
 };
